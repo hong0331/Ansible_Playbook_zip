@@ -1,0 +1,15 @@
+---
+- name: Install Amazon CLI
+  hosts: all
+  become: yes
+
+  tasks:
+    - name: Install python3-pip package
+      apt:
+        name: python3-pip
+        state: present
+
+    - name: Install Amazon CLI
+      pip:
+        name: awscli
+        state: present
