@@ -1,0 +1,74 @@
+---
+- name: Generate and distribute kubeadm token to worker nodes
+  hosts: master
+  become: true
+  vars:
+    token_file: /tmp/kubeadm_token.txt
+    local_file_path: ./kubeadm_token.txt
+  tasks:
+    - name: Initialize Kubernetes cluster
+      become_user: root
+      command: kubeadm init 
+      register: kubeadm_init
+
+    - name: Generate kubeadm token
+      shell: kubeadm token create --print-join-command
+      register: token_output
+
+    - name: Save kubeadm token to file
+      copy:
+        content: "{{ token_output.stdout }}"
+        dest: "{{ token_file }}"
+        mode: '0600'
+
+    - name: Copy kubeadm_token.txt file from master node to local machine
+      fetch:
+        src: /tmp/kubeadm_token.txt
+        dest: "{{ local_file_path }}"
+        flat: yes
+        fail_on_missing: yes
+
+    - name: Send kubeadm_token.txt file from local machine to worker node
+      copy:
+        src: "{{ local_file_path }}"
+        dest: /tmp/kubeadm_token.txt
+      delegate_to: "{{ item }}"
+      with_items: "{{ groups['workers'] }}"
+
+
+
+
+- name: Join worker nodes to worker node
+  hosts: workers
+  become: true
+  vars:
+    token_file: /tmp/kubeadm_token.txt
+
+  tasks:
+    - name: Read token from file
+      slurp:
+        src: "{{ token_file }}"
+      register: token_file
+
+    - name: Execute token
+      shell: "{{ token_file['content'] | b64decode }}"
+
+
+
+
+- name: Configure kubectl on master node 
+  hosts: master
+  become: true
+
+  tasks:
+    - name: Create .kube directory 
+      file:
+        path: .kube
+        state: directory
+      become: true
+
+    - name: Copy kubeconfig file to user's home directory
+      shell: sudo cp -i /etc/kubernetes/kubelet.conf .kube/config
+
+    - name: Set ownership for kubeconfig file
+      shell: sudo chown $(id -u):$(id -g) .kube/config
